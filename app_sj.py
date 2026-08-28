@@ -7,9 +7,8 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 
-# Page setup
 st.set_page_config(
-    page_title="Seoul Bike Demand - Multi-Model Predictor",
+    page_title="Seoul Bike Rental Analytics Hub",
     page_icon="🚲",
     layout="wide",
 )
@@ -34,7 +33,6 @@ FEATURE_NAMES = [
 
 @st.cache_resource
 def load_or_train_models():
-    """Load pre-trained models from disk or create fallback trained models."""
     model_files = {
         "Random Forest": "model_rf.pkl",
         "Gradient Boosting": "model_gb.pkl",
@@ -48,13 +46,12 @@ def load_or_train_models():
             with open(filepath, "rb") as f:
                 models[name] = pickle.load(f)
 
-    # Train fallback models if local pickles are missing
+    # Train synthetic fallback models if local pkl files are absent
     if not models:
         np.random.seed(42)
         X_dummy = pd.DataFrame(
             np.random.randn(200, len(FEATURE_NAMES)), columns=FEATURE_NAMES
         )
-        # Synthetic demand relation for realistic demo behavior
         y_dummy = (
             np.maximum(
                 0,
@@ -84,18 +81,17 @@ def load_or_train_models():
 
 models = load_or_train_models()
 
-# App Header
-st.title("🚲 Seoul Bike Rental Demand: Multi-Model Predictor")
+# Dashboard Title
+st.title("🚲 Seoul Bike Rental Analytics Hub")
 st.markdown(
-    "Compare bike demand predictions across multiple Machine Learning models based on real-time weather and temporal conditions."
+    "All-in-one forecasting tool featuring **Multi-Model Comparisons**, **24-Hour Simulation**, **Batch Processing**, and **Feature Importance**."
 )
 
 # Sidebar Inputs
-st.sidebar.header("⚙️ Model & Input Controls")
+st.sidebar.header("⚙️ Configuration & Inputs")
 
-# Model Selection Control
 selected_model_name = st.sidebar.selectbox(
-    "Primary Model for Detail View", list(models.keys())
+    "Primary Model Selection", list(models.keys())
 )
 
 st.sidebar.divider()
@@ -108,16 +104,16 @@ functioning_day = st.sidebar.selectbox("Functioning Day", ["Yes", "No"])
 holiday = st.sidebar.selectbox("Holiday Status", ["No Holiday", "Holiday"])
 
 st.sidebar.divider()
-st.sidebar.subheader("🌡️ Atmospheric Parameters")
-temp = st.sidebar.slider("Temperature (°C)", -20.0, 40.0, 24.0, step=0.5)
-humidity = st.sidebar.slider("Humidity (%)", 0, 100, 50)
-wind_speed = st.sidebar.slider("Wind Speed (m/s)", 0.0, 10.0, 2.0, step=0.1)
-visibility = st.sidebar.slider("Visibility (10m)", 0, 2000, 1700, step=50)
+st.sidebar.subheader("🌡️ Weather Conditions")
+temp = st.sidebar.slider("Temperature (°C)", -20.0, 40.0, 22.0, step=0.5)
+humidity = st.sidebar.slider("Humidity (%)", 0, 100, 45)
+wind_speed = st.sidebar.slider("Wind Speed (m/s)", 0.0, 10.0, 1.8, step=0.1)
+visibility = st.sidebar.slider("Visibility (10m)", 0, 2000, 1800, step=50)
 dew_point = st.sidebar.slider(
-    "Dew Point Temp (°C)", -35.0, 30.0, 11.0, step=0.5
+    "Dew Point Temp (°C)", -35.0, 30.0, 9.5, step=0.5
 )
 solar_rad = st.sidebar.slider(
-    "Solar Radiation (MJ/m²)", 0.0, 4.0, 1.5, step=0.05
+    "Solar Radiation (MJ/m²)", 0.0, 4.0, 1.2, step=0.05
 )
 rainfall = st.sidebar.number_input(
     "Rainfall (mm)", min_value=0.0, max_value=50.0, value=0.0, step=0.5
@@ -126,50 +122,55 @@ snowfall = st.sidebar.number_input(
     "Snowfall (cm)", min_value=0.0, max_value=20.0, value=0.0, step=0.5
 )
 
-# Prepare Feature Matrix
-raw_input = {
-    "Hour": hour,
-    "Temperature(°C)": temp,
-    "Humidity(%)": humidity,
-    "Wind speed (m/s)": wind_speed,
-    "Visibility (10m)": visibility,
-    "Dew point temperature(°C)": dew_point,
-    "Solar Radiation (MJ/m2)": solar_rad,
-    "Rainfall(mm)": rainfall,
-    "Snowfall (cm)": snowfall,
-    "Seasons_Spring": 1 if seasons == "Spring" else 0,
-    "Seasons_Summer": 1 if seasons == "Summer" else 0,
-    "Seasons_Winter": 1 if seasons == "Winter" else 0,
-    "Holiday_No Holiday": 1 if holiday == "No Holiday" else 0,
-    "Functioning Day_Yes": 1 if functioning_day == "Yes" else 0,
-}
 
-input_df = pd.DataFrame([raw_input]).reindex(
+def build_feature_dict(target_hour):
+    return {
+        "Hour": target_hour,
+        "Temperature(°C)": temp,
+        "Humidity(%)": humidity,
+        "Wind speed (m/s)": wind_speed,
+        "Visibility (10m)": visibility,
+        "Dew point temperature(°C)": dew_point,
+        "Solar Radiation (MJ/m2)": solar_rad,
+        "Rainfall(mm)": rainfall,
+        "Snowfall (cm)": snowfall,
+        "Seasons_Spring": 1 if seasons == "Spring" else 0,
+        "Seasons_Summer": 1 if seasons == "Summer" else 0,
+        "Seasons_Winter": 1 if seasons == "Winter" else 0,
+        "Holiday_No Holiday": 1 if holiday == "No Holiday" else 0,
+        "Functioning Day_Yes": 1 if functioning_day == "Yes" else 0,
+    }
+
+
+current_input_df = pd.DataFrame([build_feature_dict(hour)]).reindex(
     columns=FEATURE_NAMES, fill_value=0
 )
 
-# Tabbed Interface
-tab1, tab2 = st.tabs(
-    ["📊 Model Comparison & Predictions", "📈 24-Hour Forecast by Model"]
+# Main Navigation Tabs
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "📊 Multi-Model Comparison",
+        "📈 24-Hour Forecast Curve",
+        "📁 Batch Prediction (CSV)",
+        "🔍 Feature Importance",
+    ]
 )
 
-# TAB 1: Single Input Predictions Across All Models
+# TAB 1: Single Input Multi-Model Comparison
 with tab1:
-    st.subheader("Model Predictions for Current Inputs")
+    st.subheader("Single-Hour Predictions Across Models")
 
     if functioning_day == "No":
         st.warning(
-            "⚠️ The bike system is marked as Non-Functioning. Demand across all models defaults to 0."
+            "⚠️ The system is marked as Non-Functioning. Demand defaults to 0 across all models."
         )
     else:
-        # Generate predictions for all models
         results = {}
         for name, model in models.items():
-            pred = model.predict(input_df)[0]
+            pred = model.predict(current_input_df)[0]
             results[name] = max(0, int(round(pred)))
 
-        # Highlight Primary Model Selection
-        col_primary, col_stats = st.columns([1, 2])
+        col_primary, col_ensemble = st.columns([1, 2])
 
         with col_primary:
             st.metric(
@@ -177,19 +178,30 @@ with tab1:
                 value=f"{results[selected_model_name]:,} bikes",
             )
 
-        with col_stats:
-            avg_pred = int(np.mean(list(results.values())))
-            min_pred = min(results.values())
-            max_pred = max(results.values())
+        with col_ensemble:
+            avg_val = int(np.mean(list(results.values())))
+            min_val = min(results.values())
+            max_val = max(results.values())
 
             m1, m2, m3 = st.columns(3)
-            m1.metric("Ensemble Average", f"{avg_pred:,} bikes")
-            m2.metric("Lowest Model Estimate", f"{min_pred:,} bikes")
-            m3.metric("Highest Model Estimate", f"{max_pred:,} bikes")
+            m1.metric("Ensemble Average", f"{avg_val:,} bikes")
+            m2.metric("Minimum Prediction", f"{min_val:,} bikes")
+            m3.metric("Maximum Prediction", f"{max_val:,} bikes")
+
+        # Weather Alerts
+        if rainfall > 0 or snowfall > 0 or temp > 32 or temp < -5:
+            st.markdown("**Weather Impact Alerts:**")
+            if rainfall > 0:
+                st.warning(f"🌧️ Rain Alert: {rainfall} mm")
+            if snowfall > 0:
+                st.info(f"❄️ Snow Alert: {snowfall} cm")
+            if temp > 32:
+                st.error("🔥 Extreme Heat Warning")
+            elif temp < -5:
+                st.error("🥶 Freezing Condition Warning")
 
         st.divider()
 
-        # Side-by-Side Comparison Table and Chart
         col_chart, col_table = st.columns([2, 1])
 
         results_df = pd.DataFrame(
@@ -197,13 +209,13 @@ with tab1:
         )
 
         with col_chart:
-            st.subheader("Side-by-Side Model Comparison")
+            st.subheader("Model Comparison Bar Chart")
             st.bar_chart(
                 results_df.set_index("Model"), color="#29b5e8"
             )
 
         with col_table:
-            st.subheader("Summary Data")
+            st.subheader("Detailed Data")
             st.dataframe(
                 results_df.style.highlight_max(
                     subset=["Predicted Bike Count"], color="#d4edda"
@@ -212,31 +224,24 @@ with tab1:
                 hide_index=True,
             )
 
-# TAB 2: 24-Hour Trend Comparison Across All Models
+# TAB 2: 24-Hour Multi-Model Forecast Curves
 with tab2:
-    st.subheader("24-Hour Demand Forecast Curves")
+    st.subheader("24-Hour Demand Forecast Comparison")
     st.caption(
-        "Comparing hourly forecast trajectories across models under fixed weather parameters."
+        "Simulates hourly rental demand curves for each model under current weather conditions."
     )
 
     if functioning_day == "No":
         st.warning(
-            "System non-functioning. Demand remains 0 across all hours."
+            "System is Non-Functioning. Demand remains 0 across all 24 hours."
         )
     else:
         hours_list = list(range(24))
-        hourly_df_list = []
-
-        for h in hours_list:
-            row = raw_input.copy()
-            row["Hour"] = h
-            hourly_df_list.append(row)
-
-        full_day_df = pd.DataFrame(hourly_df_list).reindex(
+        daily_records = [build_feature_dict(h) for h in hours_list]
+        full_day_df = pd.DataFrame(daily_records).reindex(
             columns=FEATURE_NAMES, fill_value=0
         )
 
-        # Build combined 24-hour prediction dataframe
         trend_data = {"Hour": hours_list}
         for name, model in models.items():
             preds = model.predict(full_day_df)
@@ -244,3 +249,82 @@ with tab2:
 
         trend_df = pd.DataFrame(trend_data).set_index("Hour")
         st.line_chart(trend_df)
+
+# TAB 3: Batch CSV Prediction
+with tab3:
+    st.subheader("Batch Prediction via CSV File")
+    st.markdown(
+        "Upload a `.csv` file containing weather and temporal variables to generate batch predictions."
+    )
+
+    batch_model_choice = st.selectbox(
+        "Select Model for Batch Scoring", list(models.keys())
+    )
+    uploaded_file = st.file_uploader("Upload Input CSV Data", type=["csv"])
+
+    if uploaded_file is not None:
+        try:
+            user_csv = pd.read_csv(uploaded_file)
+            st.write("Uploaded CSV Data Preview:", user_csv.head(3))
+
+            processed_csv = user_csv.reindex(
+                columns=FEATURE_NAMES, fill_value=0
+            )
+
+            # Generate batch predictions using chosen model
+            selected_model = models[batch_model_choice]
+            raw_preds = selected_model.predict(processed_csv)
+            user_csv[f"Predicted_Bikes_{batch_model_choice}"] = np.maximum(
+                0, np.round(raw_preds)
+            ).astype(int)
+
+            st.success(
+                f"Successfully generated predictions using {batch_model_choice}!"
+            )
+            st.dataframe(user_csv.head(10))
+
+            csv_data = user_csv.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download Scored CSV",
+                data=csv_data,
+                file_name="seoul_bike_batch_predictions.csv",
+                mime="text/csv",
+            )
+        except Exception as err:
+            st.error(
+                f"Failed to process CSV file. Ensure standard column naming. Details: {err}"
+            )
+    else:
+        # Generate sample template
+        sample_df = pd.DataFrame(
+            [build_feature_dict(8), build_feature_dict(18)]
+        ).reindex(columns=FEATURE_NAMES, fill_value=0)
+        sample_csv = sample_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📄 Download Sample CSV Template",
+            data=sample_csv,
+            file_name="sample_bike_input.csv",
+            mime="text/csv",
+        )
+
+# TAB 4: Feature Importance
+with tab4:
+    st.subheader("Model Feature Importance Analysis")
+
+    importance_model_choice = st.selectbox(
+        "Select Model to Inspect",
+        [m for m in models.keys() if m != "Linear Regression"],
+    )
+    target_model = models[importance_model_choice]
+
+    if hasattr(target_model, "feature_importances_"):
+        fi_df = pd.DataFrame(
+            {
+                "Feature": FEATURE_NAMES,
+                "Importance Score": target_model.feature_importances_,
+            }
+        ).sort_values(by="Importance Score", ascending=True)
+
+        st.bar_chart(fi_df.set_index("Feature"))
+    else:
+        st.info("Selected model does not support feature importance metrics.")
