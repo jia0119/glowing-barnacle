@@ -3,80 +3,121 @@ import pickle
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
 
-# Page Configuration
+# Page setup
 st.set_page_config(
-    page_title="Seoul Bike Analytics & Demand Forecaster",
+    page_title="Seoul Bike Demand - Multi-Model Predictor",
     page_icon="🚲",
     layout="wide",
 )
 
+FEATURE_NAMES = [
+    "Hour",
+    "Temperature(°C)",
+    "Humidity(%)",
+    "Wind speed (m/s)",
+    "Visibility (10m)",
+    "Dew point temperature(°C)",
+    "Solar Radiation (MJ/m2)",
+    "Rainfall(mm)",
+    "Snowfall (cm)",
+    "Seasons_Spring",
+    "Seasons_Summer",
+    "Seasons_Winter",
+    "Holiday_No Holiday",
+    "Functioning Day_Yes",
+]
+
 
 @st.cache_resource
-def load_or_train_model():
-    model_filename = "bike_demand_model.pkl"
-    feature_names = [
-        "Hour",
-        "Temperature(°C)",
-        "Humidity(%)",
-        "Wind speed (m/s)",
-        "Visibility (10m)",
-        "Dew point temperature(°C)",
-        "Solar Radiation (MJ/m2)",
-        "Rainfall(mm)",
-        "Snowfall (cm)",
-        "Seasons_Spring",
-        "Seasons_Summer",
-        "Seasons_Winter",
-        "Holiday_No Holiday",
-        "Functioning Day_Yes",
-    ]
-    if os.path.exists(model_filename):
-        with open(model_filename, "rb") as f:
-            model, loaded_features = pickle.load(f)
-            return model, loaded_features
-    else:
-        # Generate lightweight placeholder model if pkl doesn't exist yet
+def load_or_train_models():
+    """Load pre-trained models from disk or create fallback trained models."""
+    model_files = {
+        "Random Forest": "model_rf.pkl",
+        "Gradient Boosting": "model_gb.pkl",
+        "Decision Tree": "model_dt.pkl",
+        "Linear Regression": "model_lr.pkl",
+    }
+
+    models = {}
+    for name, filepath in model_files.items():
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                models[name] = pickle.load(f)
+
+    # Train fallback models if local pickles are missing
+    if not models:
         np.random.seed(42)
         X_dummy = pd.DataFrame(
-            np.random.randn(100, len(feature_names)), columns=feature_names
+            np.random.randn(200, len(FEATURE_NAMES)), columns=FEATURE_NAMES
         )
-        y_dummy = np.random.randint(10, 1500, size=100)
-        model = RandomForestRegressor(n_estimators=30, random_state=42)
-        model.fit(X_dummy, y_dummy)
-        return model, feature_names
+        # Synthetic demand relation for realistic demo behavior
+        y_dummy = (
+            np.maximum(
+                0,
+                (X_dummy["Temperature(°C)"] * 25)
+                + (X_dummy["Hour"] * 40)
+                - (X_dummy["Humidity(%)"] * 5)
+                + 500,
+            )
+            + np.random.randint(0, 200, size=200)
+        )
+
+        models = {
+            "Random Forest": RandomForestRegressor(
+                n_estimators=50, random_state=42
+            ).fit(X_dummy, y_dummy),
+            "Gradient Boosting": GradientBoostingRegressor(
+                random_state=42
+            ).fit(X_dummy, y_dummy),
+            "Decision Tree": DecisionTreeRegressor(
+                max_depth=8, random_state=42
+            ).fit(X_dummy, y_dummy),
+            "Linear Regression": LinearRegression().fit(X_dummy, y_dummy),
+        }
+
+    return models
 
 
-model, feature_names = load_or_train_model()
+models = load_or_train_models()
 
-# Header
-st.title("🚲 Seoul Bike Rental Forecasting Hub")
+# App Header
+st.title("🚲 Seoul Bike Rental Demand: Multi-Model Predictor")
 st.markdown(
-    "Interactive dashboard featuring **single-hour predictions**, **24-hour daily trend simulations**, **batch processing**, and **feature importance insights**."
+    "Compare bike demand predictions across multiple Machine Learning models based on real-time weather and temporal conditions."
 )
 
-# Sidebar Input Controls
-st.sidebar.header("⚙️ Environment & Time Controls")
+# Sidebar Inputs
+st.sidebar.header("⚙️ Model & Input Controls")
 
+# Model Selection Control
+selected_model_name = st.sidebar.selectbox(
+    "Primary Model for Detail View", list(models.keys())
+)
+
+st.sidebar.divider()
+st.sidebar.subheader("📅 Temporal & Operating Info")
+hour = st.sidebar.slider("Hour of Day (0–23)", 0, 23, 17)
 seasons = st.sidebar.selectbox(
     "Season", ["Spring", "Summer", "Autumn", "Winter"]
 )
 functioning_day = st.sidebar.selectbox("Functioning Day", ["Yes", "No"])
 holiday = st.sidebar.selectbox("Holiday Status", ["No Holiday", "Holiday"])
-hour = st.sidebar.slider("Hour of Day (Target)", 0, 23, 17)
 
 st.sidebar.divider()
-st.sidebar.header("🌡️ Weather Conditions")
-temp = st.sidebar.slider("Temperature (°C)", -20.0, 40.0, 22.0, step=0.5)
-humidity = st.sidebar.slider("Humidity (%)", 0, 100, 45)
-wind_speed = st.sidebar.slider("Wind Speed (m/s)", 0.0, 10.0, 1.8, step=0.1)
-visibility = st.sidebar.slider("Visibility (10m)", 0, 2000, 1800, step=50)
+st.sidebar.subheader("🌡️ Atmospheric Parameters")
+temp = st.sidebar.slider("Temperature (°C)", -20.0, 40.0, 24.0, step=0.5)
+humidity = st.sidebar.slider("Humidity (%)", 0, 100, 50)
+wind_speed = st.sidebar.slider("Wind Speed (m/s)", 0.0, 10.0, 2.0, step=0.1)
+visibility = st.sidebar.slider("Visibility (10m)", 0, 2000, 1700, step=50)
 dew_point = st.sidebar.slider(
-    "Dew Point Temp (°C)", -35.0, 30.0, 9.5, step=0.5
+    "Dew Point Temp (°C)", -35.0, 30.0, 11.0, step=0.5
 )
 solar_rad = st.sidebar.slider(
-    "Solar Radiation (MJ/m²)", 0.0, 4.0, 1.2, step=0.05
+    "Solar Radiation (MJ/m²)", 0.0, 4.0, 1.5, step=0.05
 )
 rainfall = st.sidebar.number_input(
     "Rainfall (mm)", min_value=0.0, max_value=50.0, value=0.0, step=0.5
@@ -85,155 +126,121 @@ snowfall = st.sidebar.number_input(
     "Snowfall (cm)", min_value=0.0, max_value=20.0, value=0.0, step=0.5
 )
 
+# Prepare Feature Matrix
+raw_input = {
+    "Hour": hour,
+    "Temperature(°C)": temp,
+    "Humidity(%)": humidity,
+    "Wind speed (m/s)": wind_speed,
+    "Visibility (10m)": visibility,
+    "Dew point temperature(°C)": dew_point,
+    "Solar Radiation (MJ/m2)": solar_rad,
+    "Rainfall(mm)": rainfall,
+    "Snowfall (cm)": snowfall,
+    "Seasons_Spring": 1 if seasons == "Spring" else 0,
+    "Seasons_Summer": 1 if seasons == "Summer" else 0,
+    "Seasons_Winter": 1 if seasons == "Winter" else 0,
+    "Holiday_No Holiday": 1 if holiday == "No Holiday" else 0,
+    "Functioning Day_Yes": 1 if functioning_day == "Yes" else 0,
+}
 
-# Utility to build encoded feature row
-def build_feature_row(target_hour):
-    return {
-        "Hour": target_hour,
-        "Temperature(°C)": temp,
-        "Humidity(%)": humidity,
-        "Wind speed (m/s)": wind_speed,
-        "Visibility (10m)": visibility,
-        "Dew point temperature(°C)": dew_point,
-        "Solar Radiation (MJ/m2)": solar_rad,
-        "Rainfall(mm)": rainfall,
-        "Snowfall (cm)": snowfall,
-        "Seasons_Spring": 1 if seasons == "Spring" else 0,
-        "Seasons_Summer": 1 if seasons == "Summer" else 0,
-        "Seasons_Winter": 1 if seasons == "Winter" else 0,
-        "Holiday_No Holiday": 1 if holiday == "No Holiday" else 0,
-        "Functioning Day_Yes": 1 if functioning_day == "Yes" else 0,
-    }
-
-
-# Multi-Tab Layout
-tab1, tab2, tab3 = st.tabs(
-    ["🎯 Single Prediction & Trend", "📁 Batch CSV Prediction", "📊 Model Insights"]
+input_df = pd.DataFrame([raw_input]).reindex(
+    columns=FEATURE_NAMES, fill_value=0
 )
 
-# TAB 1: Single Prediction & 24h Trend Simulation
-with tab1:
-    col_pred, col_metrics = st.columns([1, 2])
+# Tabbed Interface
+tab1, tab2 = st.tabs(
+    ["📊 Model Comparison & Predictions", "📈 24-Hour Forecast by Model"]
+)
 
-    current_data = pd.DataFrame([build_feature_row(hour)]).reindex(
-        columns=feature_names, fill_value=0
+# TAB 1: Single Input Predictions Across All Models
+with tab1:
+    st.subheader("Model Predictions for Current Inputs")
+
+    if functioning_day == "No":
+        st.warning(
+            "⚠️ The bike system is marked as Non-Functioning. Demand across all models defaults to 0."
+        )
+    else:
+        # Generate predictions for all models
+        results = {}
+        for name, model in models.items():
+            pred = model.predict(input_df)[0]
+            results[name] = max(0, int(round(pred)))
+
+        # Highlight Primary Model Selection
+        col_primary, col_stats = st.columns([1, 2])
+
+        with col_primary:
+            st.metric(
+                label=f"Primary ({selected_model_name})",
+                value=f"{results[selected_model_name]:,} bikes",
+            )
+
+        with col_stats:
+            avg_pred = int(np.mean(list(results.values())))
+            min_pred = min(results.values())
+            max_pred = max(results.values())
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Ensemble Average", f"{avg_pred:,} bikes")
+            m2.metric("Lowest Model Estimate", f"{min_pred:,} bikes")
+            m3.metric("Highest Model Estimate", f"{max_pred:,} bikes")
+
+        st.divider()
+
+        # Side-by-Side Comparison Table and Chart
+        col_chart, col_table = st.columns([2, 1])
+
+        results_df = pd.DataFrame(
+            list(results.items()), columns=["Model", "Predicted Bike Count"]
+        )
+
+        with col_chart:
+            st.subheader("Side-by-Side Model Comparison")
+            st.bar_chart(
+                results_df.set_index("Model"), color="#29b5e8"
+            )
+
+        with col_table:
+            st.subheader("Summary Data")
+            st.dataframe(
+                results_df.style.highlight_max(
+                    subset=["Predicted Bike Count"], color="#d4edda"
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+# TAB 2: 24-Hour Trend Comparison Across All Models
+with tab2:
+    st.subheader("24-Hour Demand Forecast Curves")
+    st.caption(
+        "Comparing hourly forecast trajectories across models under fixed weather parameters."
     )
 
     if functioning_day == "No":
-        single_pred = 0
+        st.warning(
+            "System non-functioning. Demand remains 0 across all hours."
+        )
     else:
-        single_pred = max(0, int(round(model.predict(current_data)[0])))
+        hours_list = list(range(24))
+        hourly_df_list = []
 
-    with col_pred:
-        st.subheader("Target Hour Result")
-        st.metric(
-            label=f"Predicted Demand at {hour}:00",
-            value=f"{single_pred:,} bikes",
+        for h in hours_list:
+            row = raw_input.copy()
+            row["Hour"] = h
+            hourly_df_list.append(row)
+
+        full_day_df = pd.DataFrame(hourly_df_list).reindex(
+            columns=FEATURE_NAMES, fill_value=0
         )
 
-        # Weather Warnings / Indicators
-        if rainfall > 0:
-            st.warning(f"🌧️ Rain Alert: {rainfall} mm precipitation")
-        if snowfall > 0:
-            st.info(f"❄️ Snow Alert: {snowfall} cm accumulation")
-        if temp > 32:
-            st.error("🔥 Extreme Heat Warning")
-        elif temp < -5:
-            st.error("🥶 Freezing Condition Warning")
+        # Build combined 24-hour prediction dataframe
+        trend_data = {"Hour": hours_list}
+        for name, model in models.items():
+            preds = model.predict(full_day_df)
+            trend_data[name] = np.maximum(0, np.round(preds)).astype(int)
 
-    with col_metrics:
-        st.subheader("24-Hour Daily Simulation")
-        st.caption(
-            "Simulating rental demand across all hours under the current weather parameters."
-        )
-
-        # Generate 24-hour curve
-        daily_hours = list(range(24))
-        daily_records = [build_feature_row(h) for h in daily_hours]
-        daily_df = pd.DataFrame(daily_records).reindex(
-            columns=feature_names, fill_value=0
-        )
-
-        if functioning_day == "No":
-            daily_preds = [0] * 24
-        else:
-            daily_preds = np.maximum(
-                0, np.round(model.predict(daily_df))
-            ).astype(int)
-
-        chart_data = pd.DataFrame(
-            {"Hour": daily_hours, "Predicted Bikes": daily_preds}
-        ).set_index("Hour")
-        st.line_chart(chart_data)
-
-# TAB 2: Batch CSV Prediction
-with tab2:
-    st.subheader("Batch Prediction via CSV File")
-    st.markdown(
-        "Upload a `.csv` file containing weather features to generate bulk predictions."
-    )
-
-    uploaded_file = st.file_uploader("Upload CSV Data", type=["csv"])
-
-    if uploaded_file is not None:
-        try:
-            user_csv = pd.read_csv(uploaded_file)
-            st.write("Preview of Uploaded Data:", user_csv.head(3))
-
-            # Encode and realign missing columns
-            processed_csv = user_csv.reindex(
-                columns=feature_names, fill_value=0
-            )
-            raw_predictions = model.predict(processed_csv)
-            user_csv["Predicted_Bike_Count"] = np.maximum(
-                0, np.round(raw_predictions)
-            ).astype(int)
-
-            st.success("Batch prediction complete!")
-            st.write(
-                user_csv[["Hour", "Temperature(°C)", "Predicted_Bike_Count"]]
-            )
-
-            # File Download Button
-            csv_export = user_csv.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Download Predictions CSV",
-                data=csv_export,
-                file_name="seoul_bike_predictions.csv",
-                mime="text/csv",
-            )
-        except Exception as e:
-            st.error(
-                f"Error processing file. Ensure feature names match expected schema. Details: {e}"
-            )
-    else:
-        # Sample Download Template
-        sample_df = pd.DataFrame(
-            [build_feature_row(8), build_feature_row(18)]
-        ).reindex(columns=feature_names, fill_value=0)
-        sample_csv = sample_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📄 Download Sample CSV Template",
-            data=sample_csv,
-            file_name="sample_bike_input.csv",
-            mime="text/csv",
-        )
-
-# TAB 3: Model Insights
-with tab3:
-    st.subheader("Feature Importance Analysis")
-    st.markdown(
-        "Importance score of each feature used by the underlying decision trees."
-    )
-
-    if hasattr(model, "feature_importances_"):
-        importance_df = pd.DataFrame(
-            {
-                "Feature": feature_names,
-                "Importance": model.feature_importances_,
-            }
-        ).sort_values(by="Importance", ascending=True)
-
-        st.bar_chart(importance_df.set_index("Feature"))
-    else:
-        st.info("The loaded model does not expose feature importances.")
+        trend_df = pd.DataFrame(trend_data).set_index("Hour")
+        st.line_chart(trend_df)
